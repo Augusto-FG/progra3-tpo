@@ -21,5 +21,5 @@ public class RouteDto {
     private double costo;
 
     @TargetNode
-    private NodoDto destino;
+    private LocationDto destino;
 }
