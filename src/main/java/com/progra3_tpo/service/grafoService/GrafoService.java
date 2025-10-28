@@ -1,4 +1,4 @@
-package com.progra3_tpo.service;
+package com.progra3_tpo.service.grafoService;
 
 import org.springframework.stereotype.Service;
 import java.util.*;

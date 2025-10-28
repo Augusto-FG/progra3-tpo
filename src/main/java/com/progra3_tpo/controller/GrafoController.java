@@ -1,6 +1,6 @@
 package com.progra3_tpo.controller;
 
-import com.progra3_tpo.service.GrafoService;
+import com.progra3_tpo.service.grafoService.GrafoService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

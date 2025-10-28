@@ -1,3 +1,4 @@
+// java
 package com.progra3_tpo.bootstrap;
 
 import com.progra3_tpo.model.LocationDto;
@@ -5,7 +6,6 @@ import com.progra3_tpo.model.RouteDto;
 import com.progra3_tpo.repository.LocationRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -19,35 +19,44 @@ public class DataLoader implements CommandLineRunner {
     }
 
     @Override
-    @Transactional
     public void run(String... args) {
         if (locationRepository.count() == 0) {
-            // crear ubicaciones sin rutas
-            LocationDto deposito = new LocationDto(null, "Depósito Central", "DEPOSITO", "Av. Principal 123", null);
-            LocationDto a = new LocationDto(null, "Cliente A", "CLIENTE", "Calle 1", null);
-            LocationDto b = new LocationDto(null, "Cliente B", "CLIENTE", "Calle 2", null);
-            LocationDto x = new LocationDto(null, "Distribuidor X", "DISTRIBUIDOR", "Ruta 5", null);
 
-            // guardar nodos primero
-            LocationDto savedDeposito = locationRepository.save(deposito);
-            LocationDto savedA = locationRepository.save(a);
-            LocationDto savedB = locationRepository.save(b);
-            LocationDto savedX = locationRepository.save(x);
+            LocationDto deposito = new LocationDto("Depósito Central", "DEPOSITO", "Av. Principal 123");
+            LocationDto clienteA = new LocationDto("Cliente A", "CLIENTE", "Calle 1");
+            LocationDto clienteB = new LocationDto("Cliente B", "CLIENTE", "Calle 2");
+            LocationDto distribuidorX = new LocationDto("Distribuidor X", "DISTRIBUIDOR", "Ruta 5 km 42");
 
-            // crear relaciones (RouteDto) apuntando a los destinos guardados
-            RouteDto r1 = new RouteDto(null, 5.0, 10.0, savedA);
-            RouteDto r2 = new RouteDto(null, 8.0, 15.0, savedB);
-            RouteDto r3 = new RouteDto(null, 7.0, 12.0, savedX);
-            RouteDto r4 = new RouteDto(null, 4.5, 9.0, savedX);
+            deposito = locationRepository.save(deposito);
+            clienteA = locationRepository.save(clienteA);
+            clienteB = locationRepository.save(clienteB);
+            distribuidorX = locationRepository.save(distribuidorX);
 
-            // asignar rutas a los nodos origen y volver a guardar
-            savedDeposito.setRutas(List.of(r1, r2));
-            savedA.setRutas(List.of(r3));
-            savedB.setRutas(List.of(r4));
+            // rutas desde los sources (outgoing)
+            RouteDto ruta1 = new RouteDto(null, "Ruta Nacional 5", 5.0, 10.0, "URBANO", clienteA);
+            RouteDto ruta2 = new RouteDto(null, "Autopista 25 de Mayo", 8.0, 15.0, "AUTOPISTA", clienteB);
+            RouteDto ruta3 = new RouteDto(null, "Camino Rural A-X", 7.0, 12.0, "RURAL", distribuidorX);
+            RouteDto ruta4 = new RouteDto(null, "Camino Rural B-X", 4.5, 9.0, "RURAL", distribuidorX);
 
-            locationRepository.save(savedDeposito);
-            locationRepository.save(savedA);
-            locationRepository.save(savedB);
+            deposito.setRutas(List.of(ruta1, ruta2));
+            clienteA.setRutas(List.of(ruta3));
+            clienteB.setRutas(List.of(ruta4));
+
+            // rutas entrantes en los destinos (cada RouteDto apunta al source)
+            // para que SDN muestre las relaciones INCOMING en los destinos, el RouteDto debe apuntar al nodo origen
+            clienteA.setRutasEntrantes(List.of(new RouteDto(null, "Ruta Nacional 5", 5.0, 10.0, "URBANO", deposito)));
+            clienteB.setRutasEntrantes(List.of(new RouteDto(null, "Autopista 25 de Mayo", 8.0, 15.0, "AUTOPISTA", deposito)));
+            distribuidorX.setRutasEntrantes(List.of(
+                    new RouteDto(null, "Camino Rural A-X", 7.0, 12.0, "RURAL", clienteA),
+                    new RouteDto(null, "Camino Rural B-X", 4.5, 9.0, "RURAL", clienteB)
+            ));
+
+            locationRepository.save(deposito);
+            locationRepository.save(clienteA);
+            locationRepository.save(clienteB);
+            locationRepository.save(distribuidorX);
+
+            System.out.println("✅ Datos de prueba cargados correctamente en Neo4j 🚀");
         }
     }
 }

@@ -1,7 +1,8 @@
 package com.progra3_tpo.controller;
 
 import com.progra3_tpo.model.LocationDto;
-import com.progra3_tpo.service.LocationService;
+import com.progra3_tpo.service.locationService.CreateLocationRequest;
+import com.progra3_tpo.service.locationService.LocationService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,8 +18,8 @@ public class LocationController {
     }
 
     @PostMapping
-    public LocationDto create(@RequestBody LocationDto location) {
-        return locationService.saveLocation(location);
+    public LocationDto create(@RequestBody CreateLocationRequest request) {
+        return locationService.createLocationWithIncomingRoutes(request);
     }
 
     @GetMapping

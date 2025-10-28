@@ -16,9 +16,10 @@ public class RouteDto {
     @Id
     @GeneratedValue
     private Long id;
-
+    private String nombreRuta;
     private double distancia;
     private double costo;
+    private String tipoCamino;
 
     @TargetNode
     private LocationDto destino;
