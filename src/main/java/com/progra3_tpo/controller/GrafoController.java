@@ -1,5 +1,6 @@
 package com.progra3_tpo.controller;
 
+import com.progra3_tpo.service.grafoService.DijkstraResult;
 import com.progra3_tpo.service.grafoService.GrafoService;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,28 +16,11 @@ public class GrafoController {
         this.grafoService = grafoService;
     }
 
-    @GetMapping("/bfs/{inicio}")
-    public List<Integer> bfs(@PathVariable int inicio) {
-        return grafoService.bfs(inicio);
+
+    @GetMapping("/dijkstra/{nombreInicio}/{nombreFin}")
+    public DijkstraResult dijkstra(@PathVariable String nombreInicio, @PathVariable String nombreFin) {
+        return grafoService.dijkstra(nombreInicio, nombreFin);
     }
 
-    @GetMapping("/dfs/{inicio}")
-    public List<Integer> dfs(@PathVariable int inicio) {
-        return grafoService.dfs(inicio);
-    }
 
-    @GetMapping("/dijkstra/{inicio}/{fin}")
-    public List<Integer> dijkstra(@PathVariable int inicio, @PathVariable int fin) {
-        return grafoService.dijkstra(inicio, fin);
-    }
-
-    @GetMapping("/prim")
-    public String prim() {
-        return grafoService.prim();
-    }
-
-    @GetMapping("/kruskal")
-    public String kruskal() {
-        return grafoService.kruskal();
-    }
 }

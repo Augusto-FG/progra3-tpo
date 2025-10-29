@@ -1,29 +1,82 @@
+// language: java
 package com.progra3_tpo.service.grafoService;
 
+import com.progra3_tpo.model.LocationDto;
+import com.progra3_tpo.model.RouteDto;
+import com.progra3_tpo.repository.LocationRepository;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.util.*;
 
 /**
- * Servicio de grafo con Dijkstra (camino mínimo por peso).
- * Nota: las aristas y sus pesos son de ejemplo. Para usar datos reales, construir el grafo desde Neo4j.
+ * Servicio de grafo que construye el grafo desde Neo4j y permite Dijkstra por nombre o por índice.
  */
 @Service
 public class GrafoService {
 
-    private final int V = 6; // cantidad de nodos
-    private final LinkedList<Edge>[] adj; // adyacencias ponderadas
+    private final LocationRepository locationRepository;
 
-    public GrafoService() {
+    private int V = 0;
+    private LinkedList<Edge>[] adj;
+    private final Map<String, Integer> nameToIndex = new HashMap<>();
+    private final Map<Long, Integer> idToIndex = new HashMap<>();
+    private final List<LocationDto> nodes = new ArrayList<>();
+
+    public GrafoService(LocationRepository locationRepository) {
+        this.locationRepository = locationRepository;
+    }
+
+    @PostConstruct
+    private void init() {
+        buildGraphFromDatabase();
+    }
+
+    private void buildGraphFromDatabase() {
+        nodes.clear();
+        nameToIndex.clear();
+        idToIndex.clear();
+
+        List<LocationDto> locations = locationRepository.findAll();
+        V = locations.size();
+        nodes.addAll(locations);
+
+        if (V == 0) {
+            adj = new LinkedList[0];
+            return;
+        }
+
         adj = new LinkedList[V];
         for (int i = 0; i < V; i++) adj[i] = new LinkedList<>();
 
-        // Ejemplo simple de red de rutas con pesos (distancias)
-        agregarArista(0, 1, 5.0); // depósito ↔ cliente A
-        agregarArista(0, 2, 8.0); // depósito ↔ cliente B
-        agregarArista(1, 3, 4.0);
-        agregarArista(2, 4, 6.5);
-        agregarArista(3, 5, 3.0);
+        // asignar índices
+        for (int i = 0; i < V; i++) {
+            LocationDto loc = nodes.get(i);
+            if (loc.getId() != null) idToIndex.put(loc.getId(), i);
+            if (loc.getNombre() != null) nameToIndex.put(loc.getNombre(), i);
+        }
+
+        // agregar aristas usando RouteDto.costo (si está disponible)
+        for (int i = 0; i < V; i++) {
+            LocationDto src = nodes.get(i);
+            if (src.getRutas() == null) continue;
+            for (RouteDto r : src.getRutas()) {
+                if (r == null || r.getDestino() == null) continue;
+                Integer destIndex = null;
+                if (r.getDestino().getId() != null) {
+                    destIndex = idToIndex.get(r.getDestino().getId());
+                }
+                if (destIndex == null && r.getDestino().getNombre() != null) {
+                    destIndex = nameToIndex.get(r.getDestino().getNombre());
+                }
+                if (destIndex != null) {
+                    double peso = r.getCosto();
+                    adj[i].add(new Edge(destIndex, peso));
+                    // si el grafo fuera no dirigido, también agregar la inversa:
+                    // adj[destIndex].add(new Edge(i, peso));
+                }
+            }
+        }
     }
 
     private static class Edge {
@@ -32,60 +85,27 @@ public class GrafoService {
         Edge(int to, double weight) { this.to = to; this.weight = weight; }
     }
 
-    public void agregarArista(int v, int w, double weight) {
-        if (v < 0 || v >= V || w < 0 || w >= V) return;
-        adj[v].add(new Edge(w, weight));
-        adj[w].add(new Edge(v, weight)); // grafo no dirigido
-    }
-
-    public List<Integer> bfs(int inicio) {
-        List<Integer> recorrido = new ArrayList<>();
-        if (!enRango(inicio)) return recorrido;
-        boolean[] visitado = new boolean[V];
-        Queue<Integer> cola = new LinkedList<>();
-        visitado[inicio] = true;
-        cola.add(inicio);
-
-        while (!cola.isEmpty()) {
-            int nodo = cola.poll();
-            recorrido.add(nodo);
-            for (Edge e : adj[nodo]) {
-                if (!visitado[e.to]) {
-                    visitado[e.to] = true;
-                    cola.add(e.to);
-                }
-            }
-        }
-        return recorrido;
-    }
-
-    public List<Integer> dfs(int inicio) {
-        List<Integer> recorrido = new ArrayList<>();
-        if (!enRango(inicio)) return recorrido;
-        boolean[] visitado = new boolean[V];
-        dfsRec(inicio, visitado, recorrido);
-        return recorrido;
-    }
-
-    private void dfsRec(int v, boolean[] visitado, List<Integer> recorrido) {
-        visitado[v] = true;
-        recorrido.add(v);
-        for (Edge e : adj[v]) {
-            if (!visitado[e.to]) dfsRec(e.to, visitado, recorrido);
-        }
-    }
-
     private boolean enRango(int nodo) {
         return nodo >= 0 && nodo < V;
     }
 
     /**
-     * Dijkstra: devuelve la lista de nodos desde inicio hasta fin (incluyendo ambos)
-     * o lista vacía si no existe camino o los índices no son válidos.
+     * Dijkstra por índice de inicio y nombre del destino.
      */
-    public List<Integer> dijkstra(int inicio, int fin) {
-        if (!enRango(inicio) || !enRango(fin)) return Collections.emptyList();
-        if (inicio == fin) return List.of(inicio);
+    public DijkstraResult dijkstra(int inicio, String nombreFin) {
+        if (V == 0) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "No hay nodos cargados en el grafo");
+        }
+        Integer fin = nameToIndex.get(nombreFin);
+        if (fin == null) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "Nombre de destino no encontrado: " + nombreFin);
+        }
+        if (!enRango(inicio) || !enRango(fin)) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "Índices fuera de rango");
+        }
+        if (inicio == fin) {
+            return new DijkstraResult(List.of(inicio), 0.0, "Inicio y fin son iguales");
+        }
 
         double[] dist = new double[V];
         int[] prev = new int[V];
@@ -115,28 +135,62 @@ public class GrafoService {
             }
         }
 
-        if (prev[fin] == -1 && fin != inicio) {
-            // no se alcanzó fin
-            return Collections.emptyList();
+        if (prev[fin] == -1) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "No existe camino entre inicio y fin");
         }
 
-        // reconstruir camino
         LinkedList<Integer> path = new LinkedList<>();
         for (int at = fin; at != -1; at = prev[at]) {
             path.addFirst(at);
             if (at == inicio) break;
         }
+        if (path.isEmpty() || path.getFirst() != inicio) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "No existe camino entre inicio y fin");
+        }
 
-        // si el primer elemento no es inicio => no hay camino
-        if (path.isEmpty() || path.getFirst() != inicio) return Collections.emptyList();
-        return path;
+        double totalCost = 0.0;
+        for (int i = 0; i < path.size() - 1; i++) {
+            int u = path.get(i);
+            int v = path.get(i + 1);
+            boolean found = false;
+            for (Edge e : adj[u]) {
+                if (e.to == v) {
+                    totalCost += e.weight;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                for (Edge e : adj[v]) {
+                    if (e.to == u) {
+                        totalCost += e.weight;
+                        break;
+                    }
+                }
+            }
+        }
+
+        String msg = "Utilizando Dijkstra la ruta menos costosa a '" + nombreFin + "' es: " + path + " (costo=" + totalCost + ")";
+        return new DijkstraResult(path, totalCost, msg);
     }
 
-    public String prim() {
-        return "Resultado del algoritmo de Prim";
+    /**
+     * Dijkstra por nombre de inicio y nombre del destino (traduce nombre a índice).
+     */
+    public DijkstraResult dijkstra(String nombreInicio, String nombreFin) {
+        if (V == 0) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "No hay nodos cargados en el grafo");
+        }
+        Integer inicioIdx = nameToIndex.get(nombreInicio);
+        if (inicioIdx == null) {
+            return new DijkstraResult(Collections.emptyList(), 0.0, "Nombre de inicio no encontrado: " + nombreInicio);
+        }
+        return dijkstra(inicioIdx, nombreFin);
     }
 
-    public String kruskal() {
-        return "Resultado del algoritmo de Kruskal";
-    }
+    // Métodos auxiliares (placeholders) - ajustar según necesidad
+    public List<Integer> bfs(int inicio) { return Collections.emptyList(); }
+    public List<Integer> dfs(int inicio) { return Collections.emptyList(); }
+    public String prim() { return "No implementado"; }
+    public String kruskal() { return "No implementado"; }
 }
