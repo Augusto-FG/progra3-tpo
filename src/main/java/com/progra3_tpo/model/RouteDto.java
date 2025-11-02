@@ -13,9 +13,11 @@ import org.springframework.data.neo4j.core.schema.TargetNode;
 @AllArgsConstructor
 @RelationshipProperties
 public class RouteDto {
+
     @Id
     @GeneratedValue
     private Long id;
+
     private String nombreRuta;
     private double distancia;
     private double costo;
@@ -23,4 +25,12 @@ public class RouteDto {
 
     @TargetNode
     private LocationDto destino;
+
+    public RouteDto(String nombreRuta, double distancia, double costo, String tipoCamino, LocationDto destino) {
+        this.nombreRuta = nombreRuta;
+        this.distancia = distancia;
+        this.costo = costo;
+        this.tipoCamino = tipoCamino;
+        this.destino = destino;
+    }
 }
