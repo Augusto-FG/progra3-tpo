@@ -1,13 +1,13 @@
+// java
 package com.progra3_tpo.controller;
 
-import com.progra3_tpo.service.grafoService.DijkstraResult;
+import com.progra3_tpo.service.PathRequest;
+import com.progra3_tpo.service.PathResponse;
 import com.progra3_tpo.service.grafoService.GrafoService;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
-@RequestMapping("/api/grafo")
+@RequestMapping("/api")
 public class GrafoController {
 
     private final GrafoService grafoService;
@@ -17,10 +17,14 @@ public class GrafoController {
     }
 
 
-    @GetMapping("/dijkstra/{nombreInicio}/{nombreFin}")
-    public DijkstraResult dijkstra(@PathVariable String nombreInicio, @PathVariable String nombreFin) {
-        return grafoService.dijkstra(nombreInicio, nombreFin);
+    @PostMapping("/dijkstra")
+    public PathResponse computePath(
+            @RequestBody PathRequest req,
+            @RequestParam(required = false, defaultValue = "distance") String metric,
+            @RequestParam(required = false) Double alpha
+    ) {
+        double alphaVal = (alpha == null) ? 0.5 : alpha;
+        String metricVal = (metric == null || metric.isBlank()) ? "distance" : metric;
+        return grafoService.computeWithDijkstra(req.getFrom(), req.getTo(), metricVal, alphaVal);
     }
-
-
 }
