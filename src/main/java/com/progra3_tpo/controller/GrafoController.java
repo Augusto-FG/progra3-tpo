@@ -3,6 +3,8 @@ package com.progra3_tpo.controller;
 import com.progra3_tpo.service.PathRequest;
 import com.progra3_tpo.service.PathResponse;
 import com.progra3_tpo.service.backtrackingService.BacktrackingService;
+import com.progra3_tpo.service.bfsService.BfsService;
+import com.progra3_tpo.service.dfsService.DfsService;
 import com.progra3_tpo.service.grafoService.GrafoService;
 import com.progra3_tpo.service.primService.PrimService;
 import com.progra3_tpo.service.kruscalService.KruscalService;
@@ -18,15 +20,19 @@ public class GrafoController {
     private final PrimService primService;
     private final KruscalService kruscalService;
     private final Ramificacion_podaService ramificacionPodaService;
+    private final BfsService bfsService;
+    private final DfsService dfsService;
 
     public GrafoController(GrafoService grafoService, BacktrackingService backtrackingService,
                            PrimService primService, KruscalService kruscalService,
-                           Ramificacion_podaService ramificacionPodaService) {
+                           Ramificacion_podaService ramificacionPodaService, BfsService bfsService, DfsService dfsService) {
         this.grafoService = grafoService;
         this.backtrackingService = backtrackingService;
         this.primService = primService;
         this.kruscalService = kruscalService;
         this.ramificacionPodaService = ramificacionPodaService;
+        this.bfsService = bfsService;
+        this.dfsService = dfsService;
     }
 
     @PostMapping("/dijkstra")
@@ -82,5 +88,15 @@ public class GrafoController {
         double alphaVal = (alpha == null) ? 0.5 : alpha;
         String metricVal = (metric == null || metric.isBlank()) ? "distance" : metric;
         return ramificacionPodaService.computeOptimalPath(req.getFrom(), req.getTo(), metricVal, alphaVal);
+    }
+
+    @PostMapping("/bfs")
+    public PathResponse computePathBfs(@RequestBody PathRequest req) {
+        return bfsService.computeBfsShortestHops(req.getFrom(), req.getTo());
+    }
+
+    @PostMapping("/dfs")
+    public PathResponse computePathDfs(@RequestBody PathRequest req) {
+        return dfsService.computeDfsPure(req.getFrom(), req.getTo());
     }
 }
