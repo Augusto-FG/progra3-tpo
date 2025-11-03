@@ -21,71 +21,56 @@ public class DivideyConquistaService {
     public PathResponse compute(String from, String to) {
         List<LocationDto> nodes = locationRepository.findAll();
         if (nodes == null || nodes.isEmpty()) {
-            return new PathResponse("Inicio o destino no encontrado", Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
+            return new PathResponse("Inicio o destino no encontrado",
+                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        int n = nodes.size();
-        Map<String, Integer> nameToIndex = new HashMap<>(n);
-        for (int i = 0; i < n; i++) {
-            LocationDto nd = nodes.get(i);
-            if (nd != null && nd.getNombre() != null) {
-                nameToIndex.put(nd.getNombre(), i);
-            }
+        // Mapeamos los nombres de las ubicaciones a índices
+        Map<String, Integer> nameToIndex = new HashMap<>();
+        for (int i = 0; i < nodes.size(); i++) {
+            LocationDto n = nodes.get(i);
+            if (n != null && n.getNombre() != null)
+                nameToIndex.put(n.getNombre(), i);
         }
 
-        Integer s = nameToIndex.get(from);
-        Integer t = nameToIndex.get(to);
-        if (s == null || t == null) {
-            return new PathResponse("Inicio o destino no encontrado", Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
-        }
-        if (s.equals(t)) {
-            String name = nodes.get(s).getNombre() == null ? "?" : nodes.get(s).getNombre();
-            return new PathResponse("Recorrido calculado exitosamente.", Collections.singletonList(name), Collections.emptyList(), 0.0, 0.0);
+        Integer start = nameToIndex.get(from);
+        Integer end = nameToIndex.get(to);
+        if (start == null || end == null) {
+            return new PathResponse("Inicio o destino no encontrado",
+                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        // Build adjacency list
-        List<List<Edge>> adj = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
-        for (int i = 0; i < n; i++) {
+        // Creamos la lista de adyacencia
+        List<List<Edge>> adj = new ArrayList<>();
+        for (int i = 0; i < nodes.size(); i++) adj.add(new ArrayList<>());
+        for (int i = 0; i < nodes.size(); i++) {
             LocationDto src = nodes.get(i);
-            List<RouteDto> rutas = (src == null) ? null : src.getRutas();
-            if (rutas == null) continue;
-            for (RouteDto r : rutas) {
-                if (r == null || r.getDestino() == null || r.getDestino().getNombre() == null) continue;
-                Integer v = nameToIndex.get(r.getDestino().getNombre());
-                if (v == null) continue;
-                double d = r.getDistancia();
-                double c = r.getCosto();
-                if (Double.isNaN(d) || Double.isNaN(c) || d < 0.0 || c < 0.0) continue;
-                adj.get(i).add(new Edge(v, d, c, r));
+            if (src.getRutas() == null) continue;
+            for (RouteDto r : src.getRutas()) {
+                if (r.getDestino() == null || r.getDestino().getNombre() == null) continue;
+                Integer dest = nameToIndex.get(r.getDestino().getNombre());
+                if (dest == null) continue;
+                adj.get(i).add(new Edge(dest, r.getDistancia(), r.getCosto(), r));
             }
         }
 
-        boolean[] visited = new boolean[n];
-        visited[s] = true;
+        boolean[] visited = new boolean[nodes.size()];
+        visited[start] = true;
 
-        // Memo per strategy
-        Map<Integer, PathCandidate> memoCost = new HashMap<>();
-        Map<Integer, PathCandidate> memoDist = new HashMap<>();
+        // Acá arrancamos el divide y conquista de verdad
+        PathCandidate best = buscarCamino(start, end, adj, visited);
 
-        PathCandidate bestCostFirst = dfs(s, t, adj, visited, true, memoCost);
-        PathCandidate bestDistFirst = dfs(s, t, adj, visited, false, memoDist);
+        if (best == null)
+            return new PathResponse("No hay camino posible entre los nodos.",
+                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
 
-        PathCandidate best = chooseBestOverall(bestCostFirst, bestDistFirst);
-        if (best == null) {
-            return new PathResponse("No existe un recorrido posible entre los nodos especificados.", Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
-        }
-
-        // Build response like DijkstraService (names only)
+        // Convertimos a nombres para la respuesta
         List<String> nodeNames = best.nodeIdx.stream()
-                .map(idx -> {
-                    String name = nodes.get(idx).getNombre();
-                    return name == null ? "?" : name;
-                })
+                .map(i -> nodes.get(i).getNombre())
                 .collect(Collectors.toList());
 
         List<String> routeNames = best.edges.stream()
-                .map(r -> r == null ? "?" : (r.getNombreRuta() == null ? "?" : r.getNombreRuta()))
+                .map(r -> r.getNombreRuta())
                 .collect(Collectors.toList());
 
         return new PathResponse(
@@ -97,104 +82,83 @@ public class DivideyConquistaService {
         );
     }
 
-    // Divide & Conquer DFS with memoization
-    private PathCandidate dfs(int u,
-                              int t,
-                              List<List<Edge>> adj,
-                              boolean[] visited,
-                              boolean costFirst,
-                              Map<Integer, PathCandidate> memo) {
-        if (u == t) {
-            return new PathCandidate(new ArrayList<>(Collections.singletonList(u)), new ArrayList<>(), 0.0, 0.0);
+    // ---- Divide y conquista puro ----
+    private PathCandidate buscarCamino(int actual, int destino, List<List<Edge>> adj, boolean[] visited) {
+        // Caso base: si ya llegamos al destino, devolvemos un camino vacío
+        if (actual == destino) {
+            return new PathCandidate(
+                    new ArrayList<>(List.of(actual)),
+                    new ArrayList<>(),
+                    0.0,
+                    0.0
+            );
         }
 
-        // Use memo only when the state is "clean" (only current node visited)
-        boolean onlyCurrentVisited = true;
-        for (int i = 0; i < visited.length; i++) {
-            if (i != u && visited[i]) { onlyCurrentVisited = false; break; }
-        }
-        if (onlyCurrentVisited && memo.containsKey(u)) {
-            return memo.get(u);
-        }
+        List<Edge> aristas = adj.get(actual);
+        if (aristas == null || aristas.isEmpty()) return null;
 
-        List<Edge> out = adj.get(u);
-        if (out == null || out.isEmpty()) return null;
+        PathCandidate mejor = null;
 
-        // Sort edges according to the chosen strategy to explore promising branches first
-        out.sort(costFirst
-                ? Comparator.comparingDouble((Edge e) -> e.cost).thenComparingDouble(e -> e.distance)
-                : Comparator.comparingDouble((Edge e) -> e.distance).thenComparingDouble(e -> e.cost));
-
-        PathCandidate best = null;
-
-        for (Edge e : out) {
+        // Recorremos cada arista saliente
+        for (Edge e : aristas) {
             if (visited[e.to]) continue;
+
+            // Marcamos el nodo como visitado
             visited[e.to] = true;
-            PathCandidate tail = dfs(e.to, t, adj, visited, costFirst, memo);
+
+            // DIVIDIMOS: exploramos recursivamente el subcamino desde el siguiente nodo
+            PathCandidate subcamino = buscarCamino(e.to, destino, adj, visited);
+
+            // Desmarcamos para probar otras rutas
             visited[e.to] = false;
 
-            if (tail == null) continue;
+            // Si no hay camino por esa arista, seguimos con la siguiente
+            if (subcamino == null) continue;
 
-            // Combine current edge with tail
-            List<Integer> nodeIdx = new ArrayList<>(1 + tail.nodeIdx.size());
-            nodeIdx.add(u);
-            nodeIdx.addAll(tail.nodeIdx);
+            // CONQUISTAMOS: combinamos este tramo con el resto del camino
+            List<Integer> nuevosNodos = new ArrayList<>();
+            nuevosNodos.add(actual);
+            nuevosNodos.addAll(subcamino.nodeIdx);
 
-            List<RouteDto> edges = new ArrayList<>(1 + tail.edges.size());
-            edges.add(e.route);
-            edges.addAll(tail.edges);
+            List<RouteDto> nuevasRutas = new ArrayList<>();
+            nuevasRutas.add(e.route);
+            nuevasRutas.addAll(subcamino.edges);
 
-            double totalD = e.distance + tail.totalDistance;
-            double totalC = e.cost + tail.totalCost;
+            double totalDist = e.distance + subcamino.totalDistance;
+            double totalCost = e.cost + subcamino.totalCost;
 
-            PathCandidate candidate = new PathCandidate(nodeIdx, edges, totalD, totalC);
-            best = chooseByStrategy(best, candidate, costFirst);
+            PathCandidate candidato = new PathCandidate(nuevosNodos, nuevasRutas, totalDist, totalCost);
+
+            // Elegimos el mejor (el de menor costo, y si empatan, el de menor distancia)
+            if (mejor == null
+                    || totalCost < mejor.totalCost
+                    || (totalCost == mejor.totalCost && totalDist < mejor.totalDistance)) {
+                mejor = candidato;
+            }
         }
 
-        if (onlyCurrentVisited && best != null) memo.put(u, best);
-        return best;
+        return mejor;
     }
 
-    private PathCandidate chooseByStrategy(PathCandidate a, PathCandidate b, boolean costFirst) {
-        if (a == null) return b;
-        if (b == null) return a;
-        if (costFirst) {
-            int c = Double.compare(a.totalCost, b.totalCost);
-            if (c != 0) return c <= 0 ? a : b;
-            int d = Double.compare(a.totalDistance, b.totalDistance);
-            return d <= 0 ? a : b;
-        } else {
-            int d = Double.compare(a.totalDistance, b.totalDistance);
-            if (d != 0) return d <= 0 ? a : b;
-            int c = Double.compare(a.totalCost, b.totalCost);
-            return c <= 0 ? a : b;
-        }
-    }
-
-    private PathCandidate chooseBestOverall(PathCandidate a, PathCandidate b) {
-        if (a == null) return b;
-        if (b == null) return a;
-        int c = Double.compare(a.totalCost, b.totalCost);
-        if (c != 0) return c <= 0 ? a : b;
-        int d = Double.compare(a.totalDistance, b.totalDistance);
-        return d <= 0 ? a : b;
-    }
-
+    // ----- Clases auxiliares -----
     private static class Edge {
-        final int to;
-        final double distance;
-        final double cost;
-        final RouteDto route;
+        int to;
+        double distance;
+        double cost;
+        RouteDto route;
         Edge(int to, double distance, double cost, RouteDto route) {
-            this.to = to; this.distance = distance; this.cost = cost; this.route = route;
+            this.to = to;
+            this.distance = distance;
+            this.cost = cost;
+            this.route = route;
         }
     }
 
     private static class PathCandidate {
-        final List<Integer> nodeIdx;
-        final List<RouteDto> edges;
-        final double totalDistance;
-        final double totalCost;
+        List<Integer> nodeIdx;
+        List<RouteDto> edges;
+        double totalDistance;
+        double totalCost;
         PathCandidate(List<Integer> nodeIdx, List<RouteDto> edges, double totalDistance, double totalCost) {
             this.nodeIdx = nodeIdx;
             this.edges = edges;

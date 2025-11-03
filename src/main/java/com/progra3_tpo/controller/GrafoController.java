@@ -115,7 +115,6 @@ public class GrafoController {
 
     @PostMapping("/greedy")
     public PathResponse computeGreedy(@RequestBody PathRequest request) {
-        // Delegar al servicio Greedy
         return greedyService.compute(request.getFrom(), request.getTo());
     }
 
