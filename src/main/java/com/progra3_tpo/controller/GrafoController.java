@@ -9,6 +9,9 @@ import com.progra3_tpo.service.grafoService.GrafoService;
 import com.progra3_tpo.service.primService.PrimService;
 import com.progra3_tpo.service.kruscalService.KruscalService;
 import com.progra3_tpo.service.ramificacion_podaService.Ramificacion_podaService;
+import com.progra3_tpo.service.greedy.GreedyService;
+import com.progra3_tpo.service.progradinamica.PrograDinamicaService;
+import com.progra3_tpo.service.divideyconquista.DivideyConquistaService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,10 +25,15 @@ public class GrafoController {
     private final Ramificacion_podaService ramificacionPodaService;
     private final BfsService bfsService;
     private final DfsService dfsService;
+    private final GreedyService greedyService;
+    private final PrograDinamicaService prograDinamicaService;
+    private final DivideyConquistaService divideyConquistaService;
 
     public GrafoController(GrafoService grafoService, BacktrackingService backtrackingService,
                            PrimService primService, KruscalService kruscalService,
-                           Ramificacion_podaService ramificacionPodaService, BfsService bfsService, DfsService dfsService) {
+                           Ramificacion_podaService ramificacionPodaService, BfsService bfsService, DfsService dfsService,
+                           GreedyService greedyService, PrograDinamicaService prograDinamicaService,
+                           DivideyConquistaService divideyConquistaService) {
         this.grafoService = grafoService;
         this.backtrackingService = backtrackingService;
         this.primService = primService;
@@ -33,6 +41,9 @@ public class GrafoController {
         this.ramificacionPodaService = ramificacionPodaService;
         this.bfsService = bfsService;
         this.dfsService = dfsService;
+        this.greedyService = greedyService;
+        this.prograDinamicaService = prograDinamicaService;
+        this.divideyConquistaService = divideyConquistaService;
     }
 
     @PostMapping("/dijkstra")
@@ -98,5 +109,23 @@ public class GrafoController {
     @PostMapping("/dfs")
     public PathResponse computePathDfs(@RequestBody PathRequest req) {
         return dfsService.computeDfsPure(req.getFrom(), req.getTo());
+    }
+
+
+
+    @PostMapping("/greedy")
+    public PathResponse computeGreedy(@RequestBody PathRequest request) {
+        // Delegar al servicio Greedy
+        return greedyService.compute(request.getFrom(), request.getTo());
+    }
+
+    @PostMapping("/divideyconquista")
+    public PathResponse computeDivideYConquista(@RequestBody PathRequest req) {
+        return divideyConquistaService.compute(req.getFrom(), req.getTo());
+    }
+
+    @PostMapping("/programaciondinamica")
+    public PathResponse computePathProgramacionDinamica(@RequestBody PathRequest req) {
+        return prograDinamicaService.compute(req.getFrom(), req.getTo());
     }
 }
