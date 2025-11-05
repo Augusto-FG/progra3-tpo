@@ -45,6 +45,14 @@ public class GrafoController {
         this.prograDinamicaService = prograDinamicaService;
         this.divideyConquistaService = divideyConquistaService;
     }
+// alpha permite combinar dos criterios (distancia y costo) en una sola métrica ponderada para el algoritmo de búsqueda.
+// alpha es el peso de la distancia en la métrica compuesta; (1 - alpha) es el peso del costo./
+
+    /*alpha = 1.0 → sólo distancia.
+    alpha = 0.0 → sólo costo.
+    alpha = 0.5 → mezcla 50% distancia / 50% costo (tu valor por defecto).
+    Usá un valor entre 0 y 1 para controlar la importancia relativa de la distancia frente al costo.*/
+//Alpha es el parámetro que balancea distancia vs costo cuando se usa la métrica "weighted"
 
     @PostMapping("/dijkstra")
     public PathResponse computePath(

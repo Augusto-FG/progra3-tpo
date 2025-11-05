@@ -6,14 +6,12 @@ import com.progra3_tpo.service.PathResponse;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class DijkstraService {
 
-    // Esta clase interna se usa para representar una arista (conexión entre nodos)
-    // Guarda el índice del nodo destino, la distancia, el costo y la ruta original.
-    // La usan los servicios tipo Dijkstra, BFS, Backtracking, etc.
+    // Clase interna que representa una conexión (arista) entre dos nodos.
+    // Contiene el índice del nodo destino, la distancia, el costo y la ruta asociada.
     public static class EdgeDto {
         public final int to;
         public final double distance;
@@ -28,134 +26,154 @@ public class DijkstraService {
         }
     }
 
-    // Esta clase Node es solo para manejar la cola de prioridad de Dijkstra
-    // Guarda el índice del nodo y la distancia acumulada hasta ahí.
+    // Clase usada para manejar la cola de prioridad del algoritmo.
+    // Guarda el índice del nodo y la distancia acumulada desde el origen hasta ese punto.
     private static class Node implements Comparable<Node> {
-        final int idx;
-        final double dist;
-        Node(int idx, double dist) { this.idx = idx; this.dist = dist; }
-        @Override
-        public int compareTo(Node o) { return Double.compare(this.dist, o.dist); }
-    }
+        final int index;
+        final double distance;
 
-    public PathResponse compute(int start, int goal, List<List<EdgeDto>> adjList, List<LocationDto> nodes, String metric, double alpha) {
-
-        // Validamos que no haya datos nulos o índices fuera de rango
-        if (adjList == null || nodes == null || start < 0 || goal < 0 || start >= adjList.size() || goal >= adjList.size()) {
-            return new PathResponse("Parámetros inválidos", Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
+        Node(int index, double distance) {
+            this.index = index;
+            this.distance = distance;
         }
 
-        // Si el alpha viene fuera del rango (0 a 1), lo ajustamos
-        if (alpha < 0.0) alpha = 0.0;
-        if (alpha > 1.0) alpha = 1.0;
-        String m = (metric == null) ? "distance" : metric.toLowerCase(Locale.ROOT);
+        // Permite que la cola de prioridad ordene los nodos por distancia mínima.
+        @Override
+        public int compareTo(Node o) {
+            return Double.compare(this.distance, o.distance);
+        }
+    }
 
-        int n = adjList.size();
-        double[] dist = new double[n];
-        int[] prev = new int[n];
-        Arrays.fill(dist, Double.POSITIVE_INFINITY);
-        Arrays.fill(prev, -1);
-        dist[start] = 0.0;
+    // Metodo principal que ejecuta el algoritmo de Dijkstra.
+    // Calcula el camino más corto entre un nodo de origen y uno de destino
+    // dentro de un grafo ponderado, según la métrica elegida.
+    public PathResponse compute(int start, int goal, List<List<EdgeDto>> adjList, List<LocationDto> nodes, String metric, double alpha) {
 
-        // Cola de prioridad: siempre saca el nodo con menor distancia acumulada
-        PriorityQueue<Node> pq = new PriorityQueue<>();
-        pq.add(new Node(start, 0.0));
-        boolean[] visited = new boolean[n];
+        // Validación básica de los parámetros recibidos
+        if (!isValidInput(start, goal, adjList, nodes))
+            return new PathResponse("Parámetros inválidos", List.of(), List.of(), 0, 0);
 
-        // Acá arranca el algoritmo de Dijkstra posta
-        while (!pq.isEmpty()) {
-            Node cur = pq.poll();
-            if (visited[cur.idx]) continue;
-            visited[cur.idx] = true;
+        // Aseguramos que el valor de alpha esté entre 0 y 1
+        alpha = Math.max(0, Math.min(1, alpha));
 
-            // Si llegamos al destino, ya está, cortamos
-            if (cur.idx == goal) break;
+        // Definimos la métrica por defecto (distancia)
+        metric = (metric == null) ? "distance" : metric.toLowerCase();
 
-            List<EdgeDto> edges = adjList.get(cur.idx);
-            if (edges == null) continue;
+        //inicializacion
 
-            // Recorremos todos los vecinos del nodo actual
-            for (EdgeDto e : edges) {
-                int v = e.to;
+        int n = adjList.size(); // Número de nodos en el grafo
+        double[] dist = new double[n]; // Distancias acumuladas desde el nodo inicial
+        int[] prev = new int[n];       // Vector de predecesores (para reconstruir el camino)
+        Arrays.fill(dist, Double.POSITIVE_INFINITY); // Inicialmente todas las distancias son infinitas
+        Arrays.fill(prev, -1); // Inicialmente no hay predecesores
+        dist[start] = 0; // La distancia al nodo inicial siempre es cero
 
-                // Según la métrica elegida, usamos distancia, costo o combinación
-                double w;
-                switch (m) {
-                    case "cost":
-                        w = e.cost;
-                        break;
-                    case "weighted":
-                        w = alpha * e.distance + (1.0 - alpha) * e.cost;
-                        break;
-                    case "distance":
-                    default:
-                        w = e.distance;
-                        break;
-                }
+        PriorityQueue<Node> pq = new PriorityQueue<>(); // Cola de prioridad que elige el nodo con la menor distancia acumulada
+        pq.add(new Node(start, 0)); // agrega el vértice `start` con distancia 0 (origen)
 
-                // Si el peso no tiene sentido, lo ignoramos
-                if (Double.isNaN(w) || w < 0) continue;
+        boolean[] visited = new boolean[n]; // Marca los nodos ya procesados
 
-                // Calculamos la nueva distancia acumulada
-                double nd = dist[cur.idx] + w;
+        // Bucle principal del algoritmo de Dijkstra
+        while (!pq.isEmpty()) {//mientras la cola no esté vacía
+            Node current = pq.poll(); // acá se obtiene y elimina el nodo con menor distancia
+            if (visited[current.index]) continue;
+            visited[current.index] = true;
 
-                // Si encontramos un camino más corto, lo actualizamos
-                if (nd < dist[v]) {
-                    dist[v] = nd;
-                    prev[v] = cur.idx;
-                    pq.add(new Node(v, nd));
+            // Si llegamos al nodo destino, podemos cortar el proceso
+            if (current.index == goal) break;
+
+            // Relajacion, recorremos todas las aristas del nodo actual para actualizar distancias
+            for (EdgeDto edge : adjList.get(current.index)) {
+                double weight = calculateWeight(edge, metric, alpha);//caculamos el peso de cada arista
+                if (weight < 0 || Double.isNaN(weight)) continue; // Rechaza NaN infinitos y también pesos negativos
+
+                double newDist = dist[current.index] + weight;
+
+                // Si encontramos un camino más corto hacia el nodo vecino, lo actualizamos
+                if (newDist < dist[edge.to]) {//si la distancia calculada es menor a la guardada en el nodo
+                    dist[edge.to] = newDist;
+                    prev[edge.to] = current.index;
+                    pq.add(new Node(edge.to, newDist));
                 }
             }
         }
 
-        // Si la distancia al destino sigue infinita, no hay forma de llegar
-        if (Double.isInfinite(dist[goal])) {
-            return new PathResponse("No existe un camino entre los nodos.", Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
-        }
+        // Si el destino no fue alcanzado, significa que no existe un camino posible
+        if (Double.isInfinite(dist[goal]))
+            return new PathResponse("No existe un camino entre los nodos.", List.of(), List.of(), 0, 0);
 
-        // Reconstruimos el camino recorriendo los padres desde el destino hasta el origen
+        // Si existe camino, reconstruimos el recorrido y armamos la respuesta
+        return buildPathResponse(start, goal, prev, nodes, adjList);
+    }
+
+
+    // ======================= MÉTODOS AUXILIARES =======================
+
+    // Verifica que los datos de entrada sean válidos antes de ejecutar el algoritmo
+    private boolean isValidInput(int start, int goal, List<List<EdgeDto>> adjList, List<LocationDto> nodes) {
+        return adjList != null && nodes != null &&
+                start >= 0 && goal >= 0 &&
+                start < adjList.size() && goal < adjList.size();
+    }
+
+    // Calcula el peso de una arista según la métrica elegida:
+    // puede basarse en distancia, costo, o una combinación de ambas.
+    private double calculateWeight(EdgeDto edge, String metric, double alpha) {
+        return switch (metric) {
+            case "cost" -> edge.cost;
+            case "weighted" -> alpha * edge.distance + (1 - alpha) * edge.cost;
+            default -> edge.distance;
+        };
+    }
+
+    // Reconstruye el camino encontrado desde el nodo origen hasta el destino
+    // y calcula las métricas finales de distancia y costo.
+    private PathResponse buildPathResponse(int start, int goal, int[] prev,
+                                           List<LocationDto> nodes, List<List<EdgeDto>> adjList) {
+
+        // Reconstrucción del camino a partir del vector de predecesores
         LinkedList<Integer> path = new LinkedList<>();
         for (int at = goal; at != -1; at = prev[at]) path.addFirst(at);
 
-        // Armamos las listas con los nodos y rutas recorridas
-        List<LocationDto> locationsOnPath = new ArrayList<>();
-        List<RouteDto> routesOnPath = new ArrayList<>();
-        for (int i = 0; i < path.size(); i++) {
-            locationsOnPath.add(nodes.get(path.get(i)));
-            if (i < path.size() - 1) {
-                int u = path.get(i);
-                int v = path.get(i + 1);
-                Optional<EdgeDto> oe = adjList.get(u).stream().filter(e -> e.to == v).findFirst();
-                oe.ifPresent(edgeDto -> {
-                    if (edgeDto.route != null) routesOnPath.add(edgeDto.route);
-                });
-            }
+        // Obtenemos los objetos LocationDto y RouteDto correspondientes al recorrido
+        List<LocationDto> locations = path.stream().map(nodes::get).toList();
+        List<RouteDto> routes = getRoutesFromPath(path, adjList);
+
+        // Calculamos la distancia y el costo total del recorrido
+        double totalDistance = routes.stream().filter(Objects::nonNull)
+                .mapToDouble(RouteDto::getDistancia).sum();
+        double totalCost = routes.stream().filter(Objects::nonNull)
+                .mapToDouble(RouteDto::getCosto).sum();
+
+        // Listas de nombres de los nodos y rutas para la respuesta final
+        List<String> nodeNames = locations.stream()
+                .map(l -> Optional.ofNullable(l.getNombre()).orElse("?")).toList();
+
+        List<String> routeNames = routes.stream()
+                .map(r -> (r == null || r.getNombreRuta() == null) ? "?" : r.getNombreRuta())
+                .toList();
+
+        // Devuelve el resultado final del cálculo del camino
+        return new PathResponse(
+                "Recorrido calculado exitosamente.",
+                nodeNames,
+                routeNames,
+                totalDistance,
+                totalCost
+        );
+    }
+
+    // Busca las rutas (aristas) que conectan los nodos del camino recorrido
+    private List<RouteDto> getRoutesFromPath(List<Integer> path, List<List<EdgeDto>> adjList) {
+        List<RouteDto> routes = new ArrayList<>();
+        for (int i = 0; i < path.size() - 1; i++) {
+            int u = path.get(i);
+            int v = path.get(i + 1);
+            adjList.get(u).stream()
+                    .filter(e -> e.to == v && e.route != null)
+                    .findFirst()
+                    .ifPresent(e -> routes.add(e.route));
         }
-
-        // Acá pasamos la lista de objetos a nombres de nodos
-        List<String> nodeNames = locationsOnPath.stream()
-                .map(l -> l.getNombre() == null ? "?" : l.getNombre())
-                .collect(Collectors.toList());
-
-        // Y lo mismo pero con las rutas
-        List<String> routeNamesList = routesOnPath.stream()
-                .map(r -> r == null ? "?" : (r.getNombreRuta() == null ? "?" : r.getNombreRuta()))
-                .collect(Collectors.toList());
-
-        // Calculamos las distancias y costos totales del recorrido
-        double totalDistance = 0.0;
-        double totalCost = 0.0;
-        for (RouteDto r : routesOnPath) {
-            if (r != null) {
-                totalDistance += r.getDistancia();
-                totalCost += r.getCosto();
-            }
-        }
-
-        // Armamos el mensaje de respuesta final
-        String message = "Recorrido calculado exitosamente.";
-
-        // Y devolvemos todo encapsulado en el PathResponse
-        return new PathResponse(message, nodeNames, routeNamesList, totalDistance, totalCost);
+        return routes;
     }
 }

@@ -24,7 +24,7 @@ public class GrafoService {
         this.dijkstraService = dijkstraService;
     }
 
-    // Método principal que arma el grafo y ejecuta Dijkstra
+    // Metodo que arma el grafo y ejecuta Dijkstra
     public PathResponse computeWithDijkstra(String from, String to, String metric, double alpha) {
         // 1. Obtiene todas las ubicaciones (nodos del grafo)
         List<LocationDto> nodes = locationRepository.findAll();

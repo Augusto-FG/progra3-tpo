@@ -8,6 +8,13 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+/**
+ * KruscalService
+ * -------------------------------------------------------------
+ * Algoritmo: Kruskal para construir un Árbol/Foresta de Expansión Mínima (MST)
+ * sobre el grafo ponderado según una métrica.
+ * Luego busca el camino en ese MST entre 'from' y 'to' con BFS.
+ **/
 @Service
 public class KruscalService {
 
@@ -17,6 +24,19 @@ public class KruscalService {
         this.locationRepository = locationRepository;
     }
 
+    /**
+     * computeOptimalPath
+     * ------------------
+     * ENTRA: from, to, metric, alpha.
+     * HACE:
+     *   1) Valida nodos.
+     *   2) Junta todas las aristas y las ordena por peso (según metric/alpha).
+     *   3) Recorre aristas de menor a mayor; usa Union-Find para evitar ciclos y formar el MST.
+     *   4) Construye un grafo (adjacency list) del MST.
+     *   5) Ejecuta BFS en el MST para obtener el camino from→to.
+     * SALE: PathResponse con nodos/aristas y totales.
+     * COMPLEJIDAD: O(E log E) dominante por el sort.
+     */
     public PathResponse computeOptimalPath(String from, String to, String metric, double alpha) {
         // Obtener nodos
         LocationDto origenLocation = locationRepository.findByNombre(from);
@@ -34,7 +54,8 @@ public class KruscalService {
 
         // Obtener todas las aristas y ordenarlas por peso
         List<RouteDto> todasLasAristas = obtenerTodasLasAristas();
-        todasLasAristas.sort(Comparator.comparingDouble(r -> calcularPeso(r, metric, alpha)));
+        todasLasAristas.sort(Comparator.comparingDouble(r ->
+                calcularPeso(r, metric, alpha)));
 
         // Union-Find para detectar ciclos
         UnionFind uf = new UnionFind();
@@ -60,6 +81,14 @@ public class KruscalService {
         return encontrarCaminoEnMST(from, to, mst);
     }
 
+    /**
+     * obtenerTodasLasAristas
+     * ----------------------
+     * ENTRA: nada.
+     * HACE: recorre todos los LocationDto y acumula sus rutas, evitando duplicados
+     *       (para grafos no dirigidos) con un set de pares (u-v) y (v-u).
+     * SALE: lista con todas las aristas únicas.
+     */
     private List<RouteDto> obtenerTodasLasAristas() {
         List<RouteDto> aristas = new ArrayList<>();
         Set<String> procesados = new HashSet<>();
@@ -82,6 +111,14 @@ public class KruscalService {
         return aristas;
     }
 
+    /**
+     * obtenerOrigenDeArista
+     * ---------------------
+     * ENTRA: una arista (RouteDto).
+     * HACE: escanea las locations y devuelve aquella que contiene a esa arista en su lista de rutas.
+     * SALE: el LocationDto origen o null.
+     * COMPLEJIDAD: O(V + grado(origen)). Costoso, ver notas de optimización.
+     */
     private LocationDto obtenerOrigenDeArista(RouteDto arista) {
         Iterable<LocationDto> todasLocations = locationRepository.findAll();
         for (LocationDto location : todasLocations) {
@@ -92,6 +129,14 @@ public class KruscalService {
         return null;
     }
 
+    /**
+     * construirGrafoMST
+     * -----------------
+     * ENTRA: lista de aristas seleccionadas por Kruskal (MST).
+     * HACE: arma una lista de adyacencia bidireccional (clona arista inversa).
+     * SALE: Map<String, List<RouteDto>> (adjacency list del MST).
+     * COMPLEJIDAD: O(E_MST) ≈ O(V).
+     */
     private Map<String, List<RouteDto>> construirGrafoMST(List<RouteDto> aristas) {
         Map<String, List<RouteDto>> mst = new HashMap<>();
 
@@ -100,7 +145,8 @@ public class KruscalService {
             LocationDto destino = arista.getDestino();
 
             if (origen != null && destino != null) {
-                mst.computeIfAbsent(origen.getNombre(), k -> new ArrayList<>()).add(arista);
+                mst.computeIfAbsent(origen.getNombre(), k -> new ArrayList<>())
+                        .add(arista);
 
                 // Agregar arista bidireccional (crear copia invertida)
                 RouteDto aristaInversa = new RouteDto(
@@ -110,12 +156,21 @@ public class KruscalService {
                         arista.getTipoCamino(),
                         origen
                 );
-                mst.computeIfAbsent(destino.getNombre(), k -> new ArrayList<>()).add(aristaInversa);
+                mst.computeIfAbsent(destino.getNombre(), k -> new ArrayList<>())
+                        .add(aristaInversa);
             }
         }
         return mst;
     }
 
+    /**
+     * encontrarCaminoEnMST (BFS)
+     * --------------------------
+     * ENTRA: from, to y el MST como adjacency list.
+     * HACE: BFS para hallar el camino simple (en un árbol hay único camino).
+     * SALE: PathResponse con camino y totales, o “no hay camino”.
+     * COMPLEJIDAD: O(V + E_MST) ≈ O(V).
+     */
     private PathResponse encontrarCaminoEnMST(String from, String to, Map<String, List<RouteDto>> mst) {
         Queue<String> cola = new LinkedList<>();
         Map<String, RouteDto> aristaPrevia = new HashMap<>();
@@ -149,8 +204,14 @@ public class KruscalService {
         return reconstruirCamino(from, to, aristaPrevia);
     }
 
-
-
+    /**
+     * reconstruirCamino
+     * -----------------
+     * ENTRA: from, to y mapa aristaPrevia (para cada nodo, la arista con la que llegué).
+     * HACE: camina hacia atrás desde 'to' usando aristaPrevia y obtiene nodos/aristas.
+     * SALE: PathResponse listo (o mensaje de no camino).
+     * COMPLEJIDAD: O(L) (L = longitud del camino).
+     */
     private PathResponse reconstruirCamino(String from, String to, Map<String, RouteDto> aristaPrevia) {
         if (!aristaPrevia.containsKey(to) && !from.equals(to)) {
             return new PathResponse(
@@ -163,7 +224,7 @@ public class KruscalService {
         }
 
         List<String> nodosRecorrido = new ArrayList<>();
-        List<String> aristasRecorrido = new ArrayList<>();  // <-- Cambiar a List<String>
+        List<String> aristasRecorrido = new ArrayList<>();
         double distanciaTotal = 0.0;
         double costoTotal = 0.0;
 
@@ -173,7 +234,7 @@ public class KruscalService {
         while (!nodoActual.equals(from)) {
             RouteDto arista = aristaPrevia.get(nodoActual);
             nodosRecorrido.add(0, nodoActual);
-            aristasRecorrido.add(0, arista.getNombreRuta());  // <-- Convertir a String
+            aristasRecorrido.add(0, arista.getNombreRuta());
             distanciaTotal += arista.getDistancia();
             costoTotal += arista.getCosto();
 
@@ -197,17 +258,24 @@ public class KruscalService {
         );
     }
 
-
+    /**
+     * calcularPeso
+     * ------------
+     * ENTRA: una ruta y la política (metric/alpha).
+     * HACE: devuelve el peso de la arista.
+     * SALE: double.
+     * COMPLEJIDAD: O(1).
+     */
     private double calcularPeso(RouteDto ruta, String metric, double alpha) {
         return switch (metric.toLowerCase()) {
             case "distance" -> ruta.getDistancia();
             case "cost" -> ruta.getCosto();
-            case "combined" -> alpha * ruta.getDistancia() + (1 - alpha) * ruta.getCosto();
+            case "combined" -> alpha * ruta.getDistancia()
+                    + (1 - alpha) * ruta.getCosto();
             default -> ruta.getDistancia();
         };
     }
 
-    // Clase Union-Find para detectar ciclos
     private static class UnionFind {
         private final Map<String, String> parent = new HashMap<>();
         private final Map<String, Integer> rank = new HashMap<>();

@@ -18,15 +18,16 @@ public class BfsService {
         this.locationRepository = locationRepository;
     }
 
+    // Metodo principal que aplica el algoritmo BFS para encontrar el camino con menos saltos (hops)
     public PathResponse computeBfsShortestHops(String from, String to) {
 
-        // Validamos que los datos estén bien
+        // Validamos los datos de entrada
         if (from == null || to == null || from.isBlank() || to.isBlank()) {
             return new PathResponse("Datos ingresados inválidos: se requiere 'from' y 'to'.",
                     Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        // Traemos todos los nodos de la base
+        // Obtenemos todos los nodos de la base de datos
         List<LocationDto> nodes = locationRepository.findAll();
         if (nodes == null || nodes.isEmpty()) {
             return new PathResponse("No hay nodos en la base de datos.",
@@ -36,13 +37,13 @@ public class BfsService {
         int n = nodes.size();
         Map<String, Integer> nameToIndex = new HashMap<>();
 
-        // Armamos un map para acceder rápido al índice de cada nodo por nombre
+        // Se crea un mapa para acceder al índice de un nodo a partir de su nombre
         for (int i = 0; i < n; i++) {
             String nombre = nodes.get(i).getNombre();
             if (nombre != null) nameToIndex.put(nombre, i);
         }
 
-        // Buscamos el índice del origen y destino
+        // Se buscan los índices del nodo origen y destino
         Integer s = nameToIndex.get(from);
         Integer t = nameToIndex.get(to);
         if (s == null || t == null) {
@@ -50,11 +51,11 @@ public class BfsService {
                     Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        // Armamos la lista de adyacencia con las rutas
+        // Se construye la lista de adyacencia (representación del grafo)
         List<List<DijkstraService.EdgeDto>> adj = new ArrayList<>(n);
         for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
 
-        // Recorremos los nodos y guardamos sus conexiones
+        // Se recorren los nodos para agregar sus rutas de salida (sus conexiones)
         for (int i = 0; i < n; i++) {
             LocationDto src = nodes.get(i);
             List<RouteDto> rutas = src.getRutas();
@@ -67,45 +68,62 @@ public class BfsService {
             }
         }
 
-        // BFS puro: usamos cola y parent para reconstruir el camino
+        // ----------------------------------------------------------
+        // ---------------------- SECCIÓN BFS ------------------------
+        // ----------------------------------------------------------
+
+        // Arreglos auxiliares para controlar qué nodos ya se visitaron y de dónde se llegó a cada uno
         boolean[] visited = new boolean[n];
         int[] parent = new int[n];
         Arrays.fill(parent, -1);
+
+        // Cola que se usará para recorrer los nodos en orden de niveles (propio del BFS)
         ArrayDeque<Integer> q = new ArrayDeque<>();
         visited[s] = true;
         q.add(s);
 
         boolean found = false;
+
+        // Bucle principal del algoritmo BFS
+        // Mientras haya nodos en la cola, se va recorriendo nivel por nivel
         while (!q.isEmpty()) {
-            int u = q.poll();
-            if (u == t) { found = true; break; }
-            // Metemos los vecinos del nodo actual
+            int u = q.poll(); // se saca el primer elemento de la cola
+            if (u == t) { // si llegamos al destino, terminamos
+                found = true;
+                break;
+            }
+            // Recorremos todos los vecinos del nodo actual
             for (DijkstraService.EdgeDto e : adj.get(u)) {
                 int v = e.to;
                 if (!visited[v]) {
-                    visited[v] = true;
-                    parent[v] = u;
-                    q.add(v);
+                    visited[v] = true; // se marca el nodo como visitado
+                    parent[v] = u;     // se guarda de dónde se llegó a v
+                    q.add(v);          // se agrega el nodo a la cola
                 }
             }
         }
 
-        // Si no se encontró ningún camino, devolvemos mensaje
+        // ----------------------------------------------------------
+        // -------------------- FIN SECCIÓN BFS ---------------------
+        // ----------------------------------------------------------
+
+        // Si no se encontró camino, se devuelve un mensaje
         if (!found) {
             return new PathResponse("No existe recorrido entre origen y destino.",
                     Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        // Reconstruimos el camino desde el destino hasta el origen
+        // Reconstrucción del camino encontrado usando el arreglo 'parent'
         LinkedList<Integer> path = new LinkedList<>();
         for (int at = t; at != -1; at = parent[at]) path.addFirst(at);
 
-        // Armamos las listas para mostrar nombres y rutas
+        // Se generan las listas de nombres de nodos y rutas que forman el recorrido
         List<String> nodeNames = new ArrayList<>();
         List<String> routeNames = new ArrayList<>();
         double totalDistance = 0.0;
         double totalCost = 0.0;
 
+        // Se calcula la distancia y costo total del camino
         for (int i = 0; i < path.size(); i++) {
             nodeNames.add(nodes.get(path.get(i)).getNombre() == null ? "?" : nodes.get(path.get(i)).getNombre());
             if (i < path.size() - 1) {
@@ -124,7 +142,7 @@ public class BfsService {
             }
         }
 
-        // Devolvemos el resultado final del recorrido
+        // Se devuelve la respuesta con la información completa del recorrido
         return new PathResponse("Recorrido calculado exitosamente.", nodeNames, routeNames, totalDistance, totalCost);
     }
 }
