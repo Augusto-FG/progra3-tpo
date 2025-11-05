@@ -82,7 +82,7 @@ public class Ramificacion_podaService {
         while (!colaPrioridad.isEmpty()) {
             Nodo nodoActual = colaPrioridad.poll();
 
-            // Poda: si la cota inferior es ≥ mejorCota, descartar
+            // poda ejemplo: si la cota inferior es ≥ mejorCota, descartar
             if (nodoActual.getCotaInferior() >= mejorCota) {
                 continue;
             }

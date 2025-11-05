@@ -13,156 +13,179 @@ import java.util.*;
 public class DfsService {
 
     private final LocationRepository locationRepository;
-    private static final double EPS = 1e-9;
+    private static final double EPS = 1e-9; // Margen de error para comparar valores en coma flotante
 
     public DfsService(LocationRepository locationRepository) {
         this.locationRepository = locationRepository;
     }
 
-    // Metodo principal: calcula un recorrido con DFS puro desde un nodo origen hasta un destino
+    /**
+     * Método principal que calcula un recorrido usando DFS puro (sin heurísticas ni pesos intermedios).
+     * Busca un camino desde un nodo origen (from) hasta un destino (to).
+     */
     public PathResponse computeDfsPure(String from, String to) {
 
-        // Validación básica de parámetros
+        // 1. Validación de parámetros
         if (from == null || to == null || from.isBlank() || to.isBlank()) {
-            return new PathResponse("Datos ingresados inválidos: se requiere 'from' y 'to'.",
+            return new PathResponse("Datos inválidos: se requiere 'from' y 'to'.",
                     Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        // Traemos todos los nodos guardados en la base de datos
-        List<LocationDto> nodes = locationRepository.findAll();
-        if (nodes == null || nodes.isEmpty()) {
-            return new PathResponse("No hay nodos en la base de datos.",
+        // 2. Traemos todos los nodos disponibles en la base de datos
+        List<LocationDto> nodos = locationRepository.findAll();
+        if (nodos == null || nodos.isEmpty()) {
+            return new PathResponse("No hay nodos cargados en la base de datos.",
                     Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
         }
 
-        // Mapeamos los nombres de los nodos a índices (para trabajar más fácil)
-        int n = nodes.size();
-        Map<String, Integer> nameToIndex = new HashMap<>();
+        // 3. Asociamos cada nombre de nodo con un índice numérico
+        Map<String, Integer> nombreAIndice = new HashMap<>();
+        for (int i = 0; i < nodos.size(); i++) {
+            String nombre = nodos.get(i).getNombre();
+            if (nombre != null) nombreAIndice.put(nombre, i);
+        }
+
+        // 4. Verificamos que existan los nodos de origen y destino
+        Integer indiceOrigen = nombreAIndice.get(from);
+        Integer indiceDestino = nombreAIndice.get(to);
+        if (indiceOrigen == null || indiceDestino == null) {
+            return new PathResponse("No se encontró el origen o destino en la base de datos.",
+                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
+        }
+
+        // 5. Construimos la lista de adyacencia (grafo)
+        List<List<DijkstraService.EdgeDto>> grafo = construirListaAdyacencia(nodos, nombreAIndice);
+
+        // 6. Preparamos estructuras auxiliares para el recorrido DFS
+        boolean[] visitado = new boolean[nodos.size()];
+        List<String> recorridoActual = new ArrayList<>();
+        List<String> rutasActuales = new ArrayList<>();
+        Candidate mejorCamino = new Candidate();
+
+        // Marcamos el nodo inicial
+        visitado[indiceOrigen] = true;
+        recorridoActual.add(nodos.get(indiceOrigen).getNombre());
+
+        // 7. Ejecutamos DFS recursivo
+        buscarDFS(indiceOrigen, indiceDestino, visitado, recorridoActual, rutasActuales,
+                0.0, 0.0, grafo, nodos, mejorCamino);
+
+        // 8. Retornamos la respuesta según si se encontró o no un camino
+        if (Double.isInfinite(mejorCamino.totalCost)) {
+            return new PathResponse("No existe un recorrido entre el origen y el destino.",
+                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
+        }
+
+        return new PathResponse("Recorrido encontrado exitosamente.",
+                mejorCamino.nodeNames, mejorCamino.routeNames, mejorCamino.totalDistance, mejorCamino.totalCost);
+    }
+
+    /**
+     * Construye la lista de adyacencia del grafo a partir de los nodos y sus rutas.
+     */
+    private List<List<DijkstraService.EdgeDto>> construirListaAdyacencia(List<LocationDto> nodos,
+                                                                         Map<String, Integer> nombreAIndice) {
+
+        int n = nodos.size();
+        List<List<DijkstraService.EdgeDto>> grafo = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) grafo.add(new ArrayList<>());
+
         for (int i = 0; i < n; i++) {
-            String nombre = nodes.get(i).getNombre();
-            if (nombre != null) nameToIndex.put(nombre, i);
-        }
-
-        // Obtenemos los índices de origen y destino
-        Integer s = nameToIndex.get(from);
-        Integer t = nameToIndex.get(to);
-        if (s == null || t == null) {
-            return new PathResponse("Origen o destino no encontrados en la base de datos.",
-                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
-        }
-
-        // Armamos la lista de adyacencia (todas las conexiones posibles)
-        List<List<DijkstraService.EdgeDto>> adj = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
-        for (int i = 0; i < n; i++) {
-            LocationDto src = nodes.get(i);
-            List<RouteDto> rutas = src.getRutas();
+            LocationDto origen = nodos.get(i);
+            List<RouteDto> rutas = origen.getRutas();
             if (rutas == null) continue;
-            for (RouteDto r : rutas) {
-                if (r == null || r.getDestino() == null || r.getDestino().getNombre() == null) continue;
-                Integer destIdx = nameToIndex.get(r.getDestino().getNombre());
-                if (destIdx == null) continue;
-                // Guardamos la arista con su destino, distancia y costo
-                adj.get(i).add(new DijkstraService.EdgeDto(destIdx, r.getDistancia(), r.getCosto(), r));
+
+            for (RouteDto ruta : rutas) {
+                if (ruta == null || ruta.getDestino() == null || ruta.getDestino().getNombre() == null) continue;
+                Integer destinoIdx = nombreAIndice.get(ruta.getDestino().getNombre());
+                if (destinoIdx == null) continue;
+
+                // Agregamos la conexión entre origen y destino
+                grafo.get(i).add(new DijkstraService.EdgeDto(destinoIdx, ruta.getDistancia(), ruta.getCosto(), ruta));
             }
         }
-
-        // Creamos una variable para guardar la mejor solución encontrada
-        Candidate best = new Candidate();
-
-        // Estructuras auxiliares para el recorrido
-        boolean[] visited = new boolean[n];
-        List<String> curNodes = new ArrayList<>();
-        List<String> curRoutes = new ArrayList<>();
-
-        // Marcamos el nodo de inicio como visitado y lo agregamos al recorrido actual
-        visited[s] = true;
-        curNodes.add(nodes.get(s).getNombre() == null ? "?" : nodes.get(s).getNombre());
-
-        // Llamamos a la función recursiva DFS
-        dfs(s, t, visited, curNodes, curRoutes, 0.0, 0.0, adj, nodes, best);
-
-        // Si no se encontró ningún camino posible
-        if (Double.isInfinite(best.totalCost)) {
-            return new PathResponse("No existe recorrido entre origen y destino.",
-                    Collections.emptyList(), Collections.emptyList(), 0.0, 0.0);
-        }
-
-        // Si se encontró al menos un recorrido válido
-        return new PathResponse("Recorrido calculado exitosamente.",
-                best.nodeNames, best.routeNames, best.totalDistance, best.totalCost);
+        return grafo;
     }
 
-    // DFS recursivo: explora todos los caminos posibles desde el nodo actual hasta el destino
-    private void dfs(int u,
-                     int target,
-                     boolean[] visited,
-                     List<String> curNodes,
-                     List<String> curRoutes,
-                     double curDist,
-                     double curCost,
-                     List<List<DijkstraService.EdgeDto>> adj,
-                     List<LocationDto> nodes,
-                     Candidate best) {
+    /**
+     * DFS recursivo: explora todos los caminos posibles desde el nodo actual hasta el destino.
+     */
+    private void buscarDFS(int actual,
+                           int destino,
+                           boolean[] visitado,
+                           List<String> nodosActuales,
+                           List<String> rutasActuales,
+                           double distanciaActual,
+                           double costoActual,
+                           List<List<DijkstraService.EdgeDto>> grafo,
+                           List<LocationDto> nodos,
+                           Candidate mejorCamino) {
 
-        // Caso base: llegamos al destino
-        if (u == target) {
-            Candidate cand = new Candidate(new ArrayList<>(curNodes), new ArrayList<>(curRoutes), curCost, curDist);
-            updateBestIfBetter(cand, best); // actualiza la mejor solución si corresponde
+        // Caso base: si llegamos al destino, comparamos con el mejor camino encontrado
+        if (actual == destino) {
+            Candidate candidato = new Candidate(new ArrayList<>(nodosActuales), new ArrayList<>(rutasActuales),
+                    costoActual, distanciaActual);
+            actualizarSiEsMejor(candidato, mejorCamino);
             return;
         }
 
-        // Poda: si el costo actual ya supera al mejor encontrado, no seguimos
-        if (!Double.isInfinite(best.totalCost) && curCost > best.totalCost + EPS) return;
+        // Si el costo actual ya es peor que el mejor encontrado, cortamos la rama (poda)
+        if (!Double.isInfinite(mejorCamino.totalCost) && costoActual > mejorCamino.totalCost + EPS) return;
 
-        List<DijkstraService.EdgeDto> edges = adj.get(u);
-        if (edges == null || edges.isEmpty()) return;
+        List<DijkstraService.EdgeDto> conexiones = grafo.get(actual);
+        if (conexiones == null || conexiones.isEmpty()) return;
 
-        // Recorremos todos los vecinos del nodo actual
-        for (DijkstraService.EdgeDto e : edges) {
-            int v = e.to;
-            if (visited[v]) continue; // evitamos ciclos
+        // Recorremos los vecinos del nodo actual
+        for (DijkstraService.EdgeDto arista : conexiones) {
+            int vecino = arista.to;
+            if (visitado[vecino]) continue; // evitamos ciclos
 
-            RouteDto r = e.route;
-            double d = (r == null) ? e.distance : r.getDistancia();
-            double c = (r == null) ? e.cost : r.getCosto();
-            String routeName = (r == null || r.getNombreRuta() == null) ? "?" : r.getNombreRuta();
-            String nodeName = (nodes.get(v).getNombre() == null) ? "?" : nodes.get(v).getNombre();
+            RouteDto ruta = arista.route;
+            double distancia = (ruta == null) ? arista.distance : ruta.getDistancia();
+            double costo = (ruta == null) ? arista.cost : ruta.getCosto();
+            String nombreRuta = (ruta == null || ruta.getNombreRuta() == null) ? "?" : ruta.getNombreRuta();
+            String nombreNodo = (nodos.get(vecino).getNombre() == null) ? "?" : nodos.get(vecino).getNombre();
 
-            // Poda adicional: si el costo acumulado ya es mayor al mejor conocido, se corta
-            if (!Double.isInfinite(best.totalCost) && curCost + c > best.totalCost + EPS) continue;
+            // Poda adicional por costo acumulado
+            if (!Double.isInfinite(mejorCamino.totalCost) && costoActual + costo > mejorCamino.totalCost + EPS) continue;
 
-            // Marcamos el nodo como visitado y avanzamos
-            visited[v] = true;
-            curRoutes.add(routeName);
-            curNodes.add(nodeName);
+            // Avanzamos
+            visitado[vecino] = true;
+            rutasActuales.add(nombreRuta);
+            nodosActuales.add(nombreNodo);
 
-            // llamada recursiva
-            dfs(v, target, visited, curNodes, curRoutes, curDist + d, curCost + c, adj, nodes, best);
+            // Llamada recursiva
+            buscarDFS(vecino, destino, visitado, nodosActuales, rutasActuales,
+                    distanciaActual + distancia, costoActual + costo, grafo, nodos, mejorCamino);
 
-            // backtracking: deshacemos los pasos para probar otros caminos
-            visited[v] = false;
-            curRoutes.remove(curRoutes.size() - 1);
-            curNodes.remove(curNodes.size() - 1);
+            // Retroceso (backtracking): desmarcamos el nodo y eliminamos los últimos elementos
+            visitado[vecino] = false;
+            rutasActuales.remove(rutasActuales.size() - 1);
+            nodosActuales.remove(nodosActuales.size() - 1);
         }
     }
 
-    // Si el nuevo camino es mejor, lo guardamos
-    private void updateBestIfBetter(Candidate candidate, Candidate best) {
-        if (Double.isInfinite(best.totalCost)) {
-            best.copyFrom(candidate);
+    /**
+     * Si el nuevo camino es mejor que el mejor actual, lo reemplaza.
+     */
+    private void actualizarSiEsMejor(Candidate candidato, Candidate mejor) {
+        if (Double.isInfinite(mejor.totalCost)) {
+            mejor.copyFrom(candidato);
             return;
         }
-        if (candidate.totalCost < best.totalCost - EPS) {
-            best.copyFrom(candidate);
+        if (candidato.totalCost < mejor.totalCost - EPS) {
+            mejor.copyFrom(candidato);
             return;
         }
-        if (Math.abs(candidate.totalCost - best.totalCost) <= EPS && candidate.totalDistance < best.totalDistance - EPS) {
-            best.copyFrom(candidate);
+        if (Math.abs(candidato.totalCost - mejor.totalCost) <= EPS &&
+                candidato.totalDistance < mejor.totalDistance - EPS) {
+            mejor.copyFrom(candidato);
         }
     }
 
-    // Clase interna para guardar la mejor solución encontrada hasta el momento
+    /**
+     * Clase auxiliar para guardar el mejor camino encontrado hasta el momento.
+     */
     private static class Candidate {
         List<String> nodeNames = new ArrayList<>();
         List<String> routeNames = new ArrayList<>();

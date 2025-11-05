@@ -51,12 +51,13 @@ public class KruscalService {
                     0.0
             );
         }
-
+        //acá empezamos a usar greedy
         // Obtener todas las aristas y ordenarlas por peso
         List<RouteDto> todasLasAristas = obtenerTodasLasAristas();
         todasLasAristas.sort(Comparator.comparingDouble(r ->
                 calcularPeso(r, metric, alpha)));
 
+        //acá empezamos a usar greedy
         // Union-Find para detectar ciclos
         UnionFind uf = new UnionFind();
         List<RouteDto> aristasArbolExpansion = new ArrayList<>();
